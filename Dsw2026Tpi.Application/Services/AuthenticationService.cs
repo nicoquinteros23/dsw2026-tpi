@@ -5,7 +5,9 @@ using Dsw2026Tpi.CrossCutting.Helpers;
 using Dsw2026Tpi.CrossCutting.Identity;
 using Dsw2026Tpi.CrossCutting.Resources;
 using Dsw2026Tpi.Data.Identity;
+using Dsw2026Tpi.Domain;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Dsw2026Tpi.Application.Services;
@@ -17,18 +19,21 @@ public class AuthenticationService : IAuthenticationService
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly JwtService _jwtService;
     private readonly ILogger<AuthenticationService> _logger;
+    private readonly IPersistence _persistence;
 
     public AuthenticationService(UserManager<ApplicationUser> userManager,
         ISignInService signInManager,
         RoleManager<IdentityRole> roleManager,
         JwtService jwtService,
-        ILogger<AuthenticationService> logger)
+        ILogger<AuthenticationService> logger,
+        IPersistence persistence)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _roleManager = roleManager;
         _jwtService = jwtService;
         _logger = logger;
+        _persistence = persistence;
     }
 
     public async Task<LoginAdminModel.Response> LoginAdmin(LoginAdminModel.Request request)
@@ -53,9 +58,53 @@ public class AuthenticationService : IAuthenticationService
         );
     }
 
-    public async Task<LoginPatientModel.Response> LoginPatient(LoginPatientModel.Response request)
+    public async Task<LoginPatientModel.Response> LoginPatient(LoginPatientModel.Request request)
     {
-        throw new NotImplementedException();
+        if (!request.Email.IsEmailValid()) throw new AuthenticationException();
+        if (request.Dni <= 0) throw new AuthenticationException();
+
+        var dniString = request.Dni.ToString();
+
+        var patient = await _persistence.Query<Patient>()
+            .FirstOrDefaultAsync(p => p.Dni == dniString && !p.Deleted);
+
+        ApplicationUser user;
+
+        if (patient == null)
+        {
+            user = new ApplicationUser
+            {
+                UserName = request.Email,
+                Email = request.Email,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            var createResult = await _userManager.CreateAsync(user, dniString);
+            if (!createResult.Succeeded) throw new AuthenticationException();
+
+            await _userManager.AddToRoleAsync(user, Roles.Patient);
+
+            patient = new Patient
+            {
+                Dni = dniString,
+                FullName = request.Email.Split('@')[0],
+                Email = request.Email,
+                ApplicationUserId = user.Id,
+                Deleted = false
+            };
+
+            await _persistence.Save(patient);
+        }
+        else
+        {
+            user = await _userManager.FindByIdAsync(patient.ApplicationUserId.ToString()) ?? throw new AuthenticationException();
+        }
+
+        var role = Roles.Patient;
+        var token = _jwtService.GenerateToken(user.UserName!, role);
+
+        return new LoginPatientModel.Response(token, role);
     }
 
     public async Task<RegisterModel.Response> Register(RegisterModel.Request request)
