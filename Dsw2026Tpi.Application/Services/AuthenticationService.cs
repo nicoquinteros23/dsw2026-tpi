@@ -1,4 +1,4 @@
-﻿using Dsw2026Tpi.Application.Dtos;
+using Dsw2026Tpi.Application.Dtos;
 using Dsw2026Tpi.Application.Interfaces;
 using Dsw2026Tpi.CrossCutting.Exceptions;
 using Dsw2026Tpi.CrossCutting.Helpers;
@@ -6,6 +6,7 @@ using Dsw2026Tpi.CrossCutting.Identity;
 using Dsw2026Tpi.CrossCutting.Resources;
 using Dsw2026Tpi.Data.Identity;
 using Dsw2026Tpi.Domain;
+using Dsw2026Tpi.Domain.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -65,8 +66,7 @@ public class AuthenticationService : IAuthenticationService
 
         var dniString = request.Dni.ToString();
 
-        var patient = await _persistence.Query<Patient>()
-            .FirstOrDefaultAsync(p => p.Dni == dniString && !p.Deleted);
+        var patient = await _persistence.First<Patient>(p => p.Dni == dniString && !p.Deleted);
 
         ApplicationUser user;
 
@@ -90,11 +90,11 @@ public class AuthenticationService : IAuthenticationService
                 Dni = dniString,
                 FullName = request.Email.Split('@')[0],
                 Email = request.Email,
-                ApplicationUserId = user.Id,
+                ApplicationUserId = Guid.Parse(user.Id),
                 Deleted = false
             };
 
-            await _persistence.Save(patient);
+            await _persistence.Add(patient);
         }
         else
         {

@@ -1,10 +1,12 @@
-﻿using Dsw2026Tpi.Application.Dtos;
+using Dsw2026Tpi.Application.Dtos;
 using Dsw2026Tpi.Application.Interfaces;
+using Dsw2026Tpi.CrossCutting.Identity;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Dsw2026Tpi.Api.Controllers;
 
-[Route("auth")]
+[Route("api/auth")]
 public class AuthenticationController : AppController
 {
     private readonly IAuthenticationService _authenticationService;
@@ -15,6 +17,7 @@ public class AuthenticationController : AppController
     }
 
     [HttpPost("admin/register")]
+    [Authorize(Policy = Policies.AdminPolicy)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register([FromBody] RegisterModel.Request request)
@@ -24,11 +27,22 @@ public class AuthenticationController : AppController
     }
 
     [HttpPost("admin/login")]
+    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Login([FromBody] LoginAdminModel.Request request)
     {
         var result = await _authenticationService.LoginAdmin(request);
+        return Ok(result);
+    }
+
+    [HttpPost("patient/login")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> LoginPatient([FromBody] LoginPatientModel.Request request)
+    {
+        var result = await _authenticationService.LoginPatient(request);
         return Ok(result);
     }
 }
