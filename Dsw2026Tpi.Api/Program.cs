@@ -4,13 +4,16 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Serilog;
 
+using Dsw2026Tpi.Application.Interfaces;
+using Dsw2026Tpi.Application.Services;
+
 namespace Dsw2026Tpi.Api;
 
 public class Program
 {
     public static async Task Main(string[] args)
     {
-        // Inicializar con un logger simple antes de construir el host
+        
         Log.Logger = new LoggerConfiguration()
             .WriteTo.Console()
             .CreateBootstrapLogger();
@@ -36,6 +39,10 @@ public class Program
             builder.Services.AddSwaggerConfiguration();
             builder.Services.AddApplicationPersistence(builder.Configuration);
             builder.Services.AddAppCors(builder.Configuration);
+
+            
+            builder.Services.AddScoped<ISpecialityService, SpecialityService>();
+
             builder.Services.AddAppDependencies();
             builder.Services.AddControllers();
             builder.Services.AddHealthChecks();
@@ -82,4 +89,3 @@ public class Program
         }
     }
 }
-
