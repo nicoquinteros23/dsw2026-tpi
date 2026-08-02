@@ -13,7 +13,7 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-        
+
         Log.Logger = new LoggerConfiguration()
             .WriteTo.Console()
             .CreateBootstrapLogger();
@@ -40,8 +40,10 @@ public class Program
             builder.Services.AddApplicationPersistence(builder.Configuration);
             builder.Services.AddAppCors(builder.Configuration);
 
-            
+            // --- REGISTRO DE SERVICIOS (Módulo Vale) ---
             builder.Services.AddScoped<ISpecialityService, SpecialityService>();
+            builder.Services.AddScoped<IDoctorService, DoctorService>();
+            builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 
             builder.Services.AddAppDependencies();
             builder.Services.AddControllers();
