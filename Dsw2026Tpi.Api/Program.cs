@@ -4,13 +4,16 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Serilog;
 
+using Dsw2026Tpi.Application.Interfaces;
+using Dsw2026Tpi.Application.Services;
+
 namespace Dsw2026Tpi.Api;
 
 public class Program
 {
     public static async Task Main(string[] args)
     {
-        // Inicializar con un logger simple antes de construir el host
+
         Log.Logger = new LoggerConfiguration()
             .WriteTo.Console()
             .CreateBootstrapLogger();
@@ -24,10 +27,24 @@ public class Program
             //Configuraciones personalizadas
             builder.AddSerilogConfiguration();
             builder.Services.AddAppIdentity();
+            builder.Services.Configure<Microsoft.AspNetCore.Identity.IdentityOptions>(options =>
+            {
+                options.Password.RequireDigit = false;
+                options.Password.RequiredLength = 6;
+                options.Password.RequireNonAlphanumeric = false;
+                options.Password.RequireUppercase = false;
+                options.Password.RequireLowercase = false;
+            });
             builder.Services.AddAppAuthentication(builder.Configuration);
             builder.Services.AddSwaggerConfiguration();
             builder.Services.AddApplicationPersistence(builder.Configuration);
             builder.Services.AddAppCors(builder.Configuration);
+
+            // --- REGISTRO DE SERVICIOS (Módulo Vale) ---
+            builder.Services.AddScoped<ISpecialityService, SpecialityService>();
+            builder.Services.AddScoped<IDoctorService, DoctorService>();
+            builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+
             builder.Services.AddAppDependencies();
             builder.Services.AddControllers();
             builder.Services.AddHealthChecks();
@@ -74,4 +91,3 @@ public class Program
         }
     }
 }
-

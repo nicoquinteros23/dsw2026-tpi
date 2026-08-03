@@ -1,4 +1,4 @@
-﻿using Dsw2026Tpi.Data;
+using Dsw2026Tpi.Data;
 using Dsw2026Tpi.Data.Extensions;
 using Dsw2026Tpi.Data.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -11,10 +11,8 @@ public static class PersistenceConfigurationExtensions
     public static IServiceCollection AddApplicationPersistence(this IServiceCollection services,
         IConfiguration configuration)
     {
-        //Obtener cadena de conexión desde appsettings.json
         var connectionString = configuration.GetConnectionString("DefaultConnection");
 
-        //Agregar contexto (O/RM) y utilizar SQL Server para DB
         services.AddDbContext<Dsw2026TpiDbContext>(options =>
         {
             options.UseSqlServer(connectionString);
@@ -23,10 +21,15 @@ public static class PersistenceConfigurationExtensions
         services.AddDbContext<AuthenticationDbContext>(options =>
         {
             options.UseSqlServer(connectionString);
+
+            // COMENTAMOS TODO ESTO PORQUE ES DE .NET 9/10
+            /*
             options.UseSeeding((c, t) =>
             {
                 c.Seedwork<IdentityRole>("Sources\\roles.json");
+                
             });
+            */
         });
         return services;
     }

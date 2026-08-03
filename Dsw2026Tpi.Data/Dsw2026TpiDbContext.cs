@@ -1,5 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using System.Reflection;
+using Dsw2026Tpi.Domain;
 
 namespace Dsw2026Tpi.Data;
 
@@ -9,6 +10,8 @@ public class Dsw2026TpiDbContext: DbContext
         base(options)
     {
     }
+      
+    public DbSet<Patient> Patients { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
