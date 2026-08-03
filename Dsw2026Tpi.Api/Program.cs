@@ -2,8 +2,10 @@ using Dsw2026Tpi.Api.Configurations;
 using Dsw2026Tpi.Api.Middlewares;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 using Serilog;
-
 using Dsw2026Tpi.Application.Interfaces;
 using Dsw2026Tpi.Application.Services;
 
@@ -13,7 +15,6 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-
         Log.Logger = new LoggerConfiguration()
             .WriteTo.Console()
             .CreateBootstrapLogger();
@@ -24,7 +25,6 @@ public class Program
 
             var builder = WebApplication.CreateBuilder(args);
 
-            //Configuraciones personalizadas
             builder.AddSerilogConfiguration();
             builder.Services.AddAppIdentity();
             builder.Services.Configure<Microsoft.AspNetCore.Identity.IdentityOptions>(options =>
@@ -40,13 +40,52 @@ public class Program
             builder.Services.AddApplicationPersistence(builder.Configuration);
             builder.Services.AddAppCors(builder.Configuration);
 
-            // --- REGISTRO DE SERVICIOS (Módulo Vale) ---
+            builder.Services.AddRateLimiter(options =>
+            {
+                options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+                options.AddFixedWindowLimiter("AdminLoginPolicy", policy =>
+                {
+                    policy.PermitLimit = 5;
+                    policy.Window = TimeSpan.FromMinutes(1);
+                    policy.QueueLimit = 0;
+                });
+
+                options.AddFixedWindowLimiter("PatientLoginPolicy", policy =>
+                {
+                    policy.PermitLimit = 10;
+                    policy.Window = TimeSpan.FromMinutes(1);
+                    policy.QueueLimit = 0;
+                });
+            });
+
             builder.Services.AddScoped<ISpecialityService, SpecialityService>();
             builder.Services.AddScoped<IDoctorService, DoctorService>();
             builder.Services.AddScoped<IAppointmentService, AppointmentService>();
 
             builder.Services.AddAppDependencies();
-            builder.Services.AddControllers();
+
+            builder.Services.AddControllers()
+                .ConfigureApiBehaviorOptions(options =>
+                {
+                    options.InvalidModelStateResponseFactory = context =>
+                    {
+                        var errors = context.ModelState
+                            .Where(e => e.Value?.Errors.Count > 0)
+                            .SelectMany(e => e.Value!.Errors.Select(x => x.ErrorMessage))
+                            .ToList();
+
+                        var response = new
+                        {
+                            errorCode = "BAD_REQUEST",
+                            message = "La solicitud contiene errores de validación.",
+                            details = errors
+                        };
+
+                        return new BadRequestObjectResult(response);
+                    };
+                });
+
             builder.Services.AddHealthChecks();
 
             var app = builder.Build();
@@ -66,6 +105,7 @@ public class Program
             app.UseAuthentication();
             app.UseAuthorization();
             app.UseCors();
+            app.UseRateLimiter();
             app.UseMiddleware<ExceptionHandlingMiddleware>();
 
             app.MapControllers();

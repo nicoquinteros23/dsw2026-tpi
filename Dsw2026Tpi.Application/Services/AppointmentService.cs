@@ -1,5 +1,6 @@
-﻿using Dsw2026Tpi.Application.Dtos.Appointments;
+using Dsw2026Tpi.Application.Dtos.Appointments;
 using Dsw2026Tpi.Application.Interfaces;
+using Dsw2026Tpi.Domain;
 using Dsw2026Tpi.Domain.Entities;
 using Dsw2026Tpi.Data;
 using Microsoft.EntityFrameworkCore;
@@ -65,9 +66,12 @@ public class AppointmentService : IAppointmentService
     {
         // Buscamos los turnos activos del paciente filtrando por su DNI
         // (Asumimos que la entidad Appointment tiene relación con Patient)
+        var patient = await _context.Patients.FirstOrDefaultAsync(p => p.Dni == dni && !p.Deleted);
+        if (patient == null) return Enumerable.Empty<AppointmentResponse>();
+
         return await _context.Set<Appointment>()
             .Include(a => a.Doctor)
-            .Where(a => a.Status == AppointmentStatus.BOOKED)
+            .Where(a => a.PatientId == patient.Id && a.Status == AppointmentStatus.BOOKED)
             .Select(a => new AppointmentResponse
             {
                 Id = a.Id,
@@ -90,6 +94,12 @@ public class AppointmentService : IAppointmentService
 
         if (doctorId.HasValue)
             query = query.Where(a => a.DoctorId == doctorId);
+
+        if (specialityId.HasValue)
+            query = query.Where(a => a.Doctor.SpecialityId == specialityId.Value);
+
+        if (!string.IsNullOrEmpty(dni))
+            query = query.Where(a => _context.Patients.Any(p => p.Dni == dni && p.Id == a.PatientId && !p.Deleted));
 
         var total = await query.CountAsync();
         var items = await query
