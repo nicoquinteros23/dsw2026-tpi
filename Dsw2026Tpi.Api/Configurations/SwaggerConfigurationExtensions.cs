@@ -1,4 +1,4 @@
-﻿using Microsoft.OpenApi;
+﻿using Microsoft.OpenApi.Models; 
 
 namespace Dsw2026Tpi.Api.Configurations;
 
@@ -9,27 +9,35 @@ public static class SwaggerConfigurationExtensions
         services.AddSwaggerGen(o =>
         {
             const string schemeId = "Bearer";
+
             o.SwaggerDoc("v1", new OpenApiInfo
             {
-                Title = "Desarollo de Software 2026",
+                Title = "Desarrollo de Software 2026",
                 Version = "v1",
             });
+
             o.AddSecurityDefinition(schemeId, new OpenApiSecurityScheme
             {
                 In = ParameterLocation.Header,
                 Name = "Authorization",
                 Description = "Ingrese el token JWT con el prefijo 'Bearer ' (ej: Bearer eyJhbG...)",
-                Type = SecuritySchemeType.ApiKey
+                Type = SecuritySchemeType.ApiKey,
+                Scheme = "Bearer"
             });
-            o.AddSecurityRequirement(doc =>
+
+            o.AddSecurityRequirement(new OpenApiSecurityRequirement
             {
-                return new OpenApiSecurityRequirement
                 {
+                    new OpenApiSecurityScheme
                     {
-                        new OpenApiSecuritySchemeReference(schemeId, doc),
-                        new List<string>()
-                    }
-                };
+                        Reference = new OpenApiReference
+                        {
+                            Type = ReferenceType.SecurityScheme,
+                            Id = schemeId
+                        }
+                    },
+                    new List<string>()
+                }
             });
 
             // Configura nombres únicos para schemas con tipos anidados
