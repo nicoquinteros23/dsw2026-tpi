@@ -62,9 +62,12 @@ public class AuthenticationService : IAuthenticationService
     public async Task<LoginPatientModel.Response> LoginPatient(LoginPatientModel.Request request)
     {
         if (!request.Email.IsEmailValid()) throw new AuthenticationException();
-        if (request.Dni <= 0) throw new AuthenticationException();
+        if (string.IsNullOrWhiteSpace(request.Dni) || !long.TryParse(request.Dni, out var dniVal) || dniVal <= 0)
+        {
+            throw new AuthenticationException();
+        }
 
-        var dniString = request.Dni.ToString();
+        var dniString = request.Dni;
 
         var patient = await _persistence.First<Patient>(p => p.Dni == dniString && !p.Deleted);
 
