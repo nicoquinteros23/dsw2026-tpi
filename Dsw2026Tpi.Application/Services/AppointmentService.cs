@@ -104,6 +104,6 @@ public class AppointmentService : IAppointmentService
             })
             .ToListAsync();
 
-        return new Pagination<AppointmentResponse>(items, total, pageIndex, pageSize);
+        return new Pagination<AppointmentResponse>(total, pageIndex, pageSize, items);
     }
 }
