@@ -16,17 +16,27 @@ public class AppointmentService : IAppointmentService
         _context = context;
     }
 
-    public async Task<AppointmentResponse> CreateAsync(AppointmentRequest request)
+    public async Task<AppointmentResponse> CreateAsync(AppointmentRequest request, string userEmail)
     {
-        // 1. Validar que no sea una fecha pasada
-        if (request.Date < DateTime.Now)
-            throw new Exception("No se pueden reservar turnos en fechas u horarios pasados.");
+        // 1. Buscar al paciente por su email
+        var patient = await _context.Patients
+            .FirstOrDefaultAsync(p => p.Email == userEmail && !p.Deleted);
+        
+        if (patient == null)
+            throw new Exception("El paciente asociado al usuario no existe o ha sido eliminado.");
 
-        // 2. Validar motivo (mínimo 5 caracteres según el PDF)
+        // 2. Validar que el AvailabilitySlot exista
+        var availabilitySlot = await _context.Set<AvailabilitySlot>()
+            .FirstOrDefaultAsync(s => s.Id == request.AvailabilitySlotId);
+        
+        if (availabilitySlot == null)
+            throw new Exception("El horario disponible no existe.");
+
+        // 3. Validar motivo (mínimo 5 caracteres según el PDF)
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length < 5)
             throw new Exception("El motivo del turno es obligatorio y debe tener al menos 5 caracteres.");
 
-        // 3. CONTROL DE CONCURRENCIA (Doble reserva)
+        // 4. CONTROL DE CONCURRENCIA (Doble reserva)
         // Verificamos si ese bloque de horario (AvailabilitySlotId) ya tiene un turno RESERVADO (BOOKED)
         var isOccupied = await _context.Set<Appointment>()
             .AnyAsync(a => a.AvailabilitySlotId == request.AvailabilitySlotId && a.Status == AppointmentStatus.BOOKED);
@@ -34,8 +44,8 @@ public class AppointmentService : IAppointmentService
         if (isOccupied)
             throw new Exception("Conflicto: Este turno ya ha sido reservado por otro paciente. Por favor, elija otro horario.");
 
-        // 4. Crear el turno
-        var appointment = new Appointment(request.PatientId, request.DoctorId, request.AvailabilitySlotId, request.Date, request.Reason);
+        // 5. Crear el turno con el patientId obtenido del email
+        var appointment = new Appointment(patient.Id, request.AvailabilitySlotId, request.Reason);
 
         _context.Set<Appointment>().Add(appointment);
         await _context.SaveChangesAsync();
@@ -43,7 +53,7 @@ public class AppointmentService : IAppointmentService
         return new AppointmentResponse
         {
             Id = appointment.Id,
-            Date = appointment.Date,
+            Date = availabilitySlot.SlotDate,
             Status = appointment.Status.ToString()
         };
     }
@@ -59,24 +69,26 @@ public class AppointmentService : IAppointmentService
             throw new Exception("Solo se pueden cancelar turnos que estén en estado RESERVADO (BOOKED).");
 
         appointment.Cancel(); // Cambia el estado a CANCELLED
+        appointment.CancelledAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
     }
 
     public async Task<IEnumerable<AppointmentResponse>> GetByPatientDniAsync(string dni)
     {
         // Buscamos los turnos activos del paciente filtrando por su DNI
-        // (Asumimos que la entidad Appointment tiene relación con Patient)
         var patient = await _context.Patients.FirstOrDefaultAsync(p => p.Dni == dni && !p.Deleted);
         if (patient == null) return Enumerable.Empty<AppointmentResponse>();
 
         return await _context.Set<Appointment>()
-            .Include(a => a.Doctor)
+            .Include(a => a.AvailabilitySlot)
+            .ThenInclude(s => s.AvailabilityRule)
+            .ThenInclude(ar => ar.Doctor)
             .Where(a => a.PatientId == patient.Id && a.Status == AppointmentStatus.BOOKED)
             .Select(a => new AppointmentResponse
             {
                 Id = a.Id,
-                Date = a.Date,
-                DoctorName = a.Doctor.Name,
+                Date = a.AvailabilitySlot.SlotDate,
+                DoctorName = a.AvailabilitySlot.AvailabilityRule.Doctor.Name,
                 Status = a.Status.ToString()
             }).ToListAsync();
     }
@@ -85,19 +97,25 @@ public class AppointmentService : IAppointmentService
     {
         // Lógica para la búsqueda avanzada del Administrador con filtros opcionales
         var query = _context.Set<Appointment>()
-            .Include(a => a.Doctor)
+            .Include(a => a.AvailabilitySlot)
+            .ThenInclude(s => s.AvailabilityRule)
+            .ThenInclude(ar => ar.Doctor)
             .ThenInclude(d => d.Speciality)
             .AsQueryable();
 
+        // Filtro por fecha del slot
         if (date.HasValue)
-            query = query.Where(a => a.Date.Date == date.Value.Date);
+            query = query.Where(a => a.AvailabilitySlot.SlotDate.Date == date.Value.Date);
 
+        // Filtro por médico
         if (doctorId.HasValue)
-            query = query.Where(a => a.DoctorId == doctorId);
+            query = query.Where(a => a.AvailabilitySlot.AvailabilityRule.DoctorId == doctorId);
 
+        // Filtro por especialidad
         if (specialityId.HasValue)
-            query = query.Where(a => a.Doctor.SpecialityId == specialityId.Value);
+            query = query.Where(a => a.AvailabilitySlot.AvailabilityRule.Doctor.SpecialityId == specialityId.Value);
 
+        // Filtro por DNI del paciente
         if (!string.IsNullOrEmpty(dni))
             query = query.Where(a => _context.Patients.Any(p => p.Dni == dni && p.Id == a.PatientId && !p.Deleted));
 
@@ -108,8 +126,8 @@ public class AppointmentService : IAppointmentService
             .Select(a => new AppointmentResponse
             {
                 Id = a.Id,
-                Date = a.Date,
-                DoctorName = a.Doctor.Name,
+                Date = a.AvailabilitySlot.SlotDate,
+                DoctorName = a.AvailabilitySlot.AvailabilityRule.Doctor.Name,
                 Status = a.Status.ToString()
             })
             .ToListAsync();

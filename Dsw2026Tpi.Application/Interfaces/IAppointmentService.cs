@@ -5,7 +5,7 @@ namespace Dsw2026Tpi.Application.Interfaces;
 
 public interface IAppointmentService
 {
-    Task<AppointmentResponse> CreateAsync(AppointmentRequest request);
+    Task<AppointmentResponse> CreateAsync(AppointmentRequest request, string userEmail);
     Task<IEnumerable<AppointmentResponse>> GetByPatientDniAsync(string dni);
     Task CancelAsync(Guid id);
     // Búsqueda avanzada Admin
