@@ -1,9 +1,11 @@
 ﻿namespace Dsw2026Tpi.Domain.Entities;
 
-public class Speciality: EntityBase
+public class Speciality : EntityBase
 {
-    public string Name { get; init; }
-    public string Description { get; init; }
+    public string Name { get; set; }
+    public string Description { get; set; }
+
+    public bool IsDeleted { get; set; } = false;
 
     #region Constructor for EF
 #pragma warning disable CS8618
@@ -15,5 +17,6 @@ public class Speciality: EntityBase
     {
         Name = name;
         Description = description;
+        IsDeleted = false;
     }
 }
