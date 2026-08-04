@@ -11,10 +11,12 @@ namespace Dsw2026Tpi.Api.Controllers;
 public class DoctorController : AppController
 {
     private readonly IDoctorService _service;
+    private readonly IAvailabilityService _availabilityService;
 
-    public DoctorController(IDoctorService service)
+    public DoctorController(IDoctorService service, IAvailabilityService availabilityService)
     {
         _service = service;
+        _availabilityService = availabilityService;
     }
 
     [HttpGet]
@@ -38,5 +40,15 @@ public class DoctorController : AppController
     {
         await _service.DeleteAsync(id);
         return NoContent();
+    }
+
+    [HttpGet("{id}/availabilities")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAvailabilities(Guid id, [FromQuery] int month, [FromQuery] int year)
+    {
+        var availabilities = await _availabilityService.GetDoctorAvailabilityAsync(id, month, year);
+        return Ok(availabilities);
     }
 }

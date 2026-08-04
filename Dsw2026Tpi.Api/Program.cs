@@ -1,9 +1,14 @@
 using Dsw2026Tpi.Api.Configurations;
 using Dsw2026Tpi.Api.Middlewares;
+using Dsw2026Tpi.CrossCutting.Identity;
+using Dsw2026Tpi.Data;
+using Dsw2026Tpi.Data.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
 using Serilog;
 using Dsw2026Tpi.Application.Interfaces;
@@ -89,6 +94,65 @@ public class Program
             builder.Services.AddHealthChecks();
 
             var app = builder.Build();
+
+            // Ejecutar migraciones y crear datos iniciales
+            using (var scope = app.Services.CreateScope())
+            {
+                try
+                {
+                    var authDb = scope.ServiceProvider.GetRequiredService<AuthenticationDbContext>();
+                    var appDb = scope.ServiceProvider.GetRequiredService<Dsw2026TpiDbContext>();
+                    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+                    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+
+                    // Ejecutar migraciones
+                    await authDb.Database.MigrateAsync();
+                    await appDb.Database.MigrateAsync();
+
+                    // Crear roles si no existen
+                    if (!await roleManager.RoleExistsAsync(Roles.Administrator))
+                    {
+                        await roleManager.CreateAsync(new IdentityRole(Roles.Administrator));
+                    }
+
+                    if (!await roleManager.RoleExistsAsync(Roles.Patient))
+                    {
+                        await roleManager.CreateAsync(new IdentityRole(Roles.Patient));
+                    }
+
+                    // Crear usuario administrador por defecto
+                    var adminEmail = "admin@dsw2026.com";
+                    var adminPassword = "Admin123";
+                    var existingAdmin = await userManager.FindByEmailAsync(adminEmail);
+
+                    if (existingAdmin == null)
+                    {
+                        var adminUser = new ApplicationUser
+                        {
+                            UserName = adminEmail,
+                            Email = adminEmail,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+
+                        var result = await userManager.CreateAsync(adminUser, adminPassword);
+                        if (result.Succeeded)
+                        {
+                            await userManager.AddToRoleAsync(adminUser, Roles.Administrator);
+                            Log.Information("Usuario administrador por defecto creado: {Email}", adminEmail);
+                        }
+                        else
+                        {
+                            Log.Warning("No se pudo crear el usuario administrador por defecto. Errores: {@Errors}", result.Errors);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Error durante la inicialización de la base de datos");
+                    throw;
+                }
+            }
 
             app.UseSerilogRequestLogging();
 
