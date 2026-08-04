@@ -1,13 +1,15 @@
 ﻿using Dsw2026Tpi.Application.Dtos.Appointments;
 using Dsw2026Tpi.Application.Interfaces;
+using Dsw2026Tpi.CrossCutting.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Dsw2026Tpi.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize] // requiere el Token JWT que Flor armó
+[Authorize]
 public class AppointmentsController : ControllerBase
 {
     private readonly IAppointmentService _service;
@@ -17,33 +19,58 @@ public class AppointmentsController : ControllerBase
         _service = service;
     }
 
-    // Reservar un turno (POST /api/Appointments)
+    /// <summary>
+    /// Reservar un turno (POST /api/Appointments)
+    /// El patientId se extrae automáticamente del token JWT del usuario autenticado.
+    /// </summary>
     [HttpPost]
-    public async Task<IActionResult> Create(AppointmentRequest request)
+    [Authorize(Roles = "Paciente")]
+    [ProducesResponseType(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Create([FromBody] AppointmentRequest request)
     {
-        var response = await _service.CreateAsync(request);
+        // Extraer el email del usuario autenticado desde el token JWT
+        var userEmail = User.FindFirst(ClaimTypes.Name)?.Value;
+        
+        if (string.IsNullOrEmpty(userEmail))
+            return Unauthorized(new { message = "No se pudo extraer la identidad del usuario del token." });
+
+        // El servicio se encargará de buscar el patientId usando el email
+        var response = await _service.CreateAsync(request, userEmail);
         return CreatedAtAction(nameof(GetByPatient), new { dni = "" }, response);
     }
 
-    // Ver turnos de un paciente (GET /api/Appointments/patient?dni=...)
+    /// <summary>
+    /// Ver turnos de un paciente (GET /api/Appointments/patient?dni=...)
+    /// </summary>
     [HttpGet("patient")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetByPatient([FromQuery] string dni)
     {
         var result = await _service.GetByPatientDniAsync(dni);
         return Ok(result);
     }
 
-    // Cancelar un turno (DELETE /api/Appointments/{id})
+    /// <summary>
+    /// Cancelar un turno (DELETE /api/Appointments/{id})
+    /// </summary>
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Cancel(Guid id)
     {
         await _service.CancelAsync(id);
         return NoContent();
     }
 
-    // Búsqueda avanzada para el Administrador (GET /api/Appointments/search)
+    /// <summary>
+    /// Búsqueda avanzada para el Administrador (GET /api/Appointments/search)
+    /// </summary>
     [HttpGet("search")]
-    [Authorize(Roles = "ADMINISTRADOR")] // Solo el Admin puede usar este
+    [Authorize(Roles = "ADMINISTRADOR")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Search(
         [FromQuery] Guid? specialityId,
         [FromQuery] Guid? doctorId,
