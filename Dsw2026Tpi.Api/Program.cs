@@ -1,7 +1,12 @@
 using Dsw2026Tpi.Api.Configurations;
 using Dsw2026Tpi.Api.Middlewares;
+using Dsw2026Tpi.CrossCutting.Identity;
+using Dsw2026Tpi.Data;
+using Dsw2026Tpi.Data.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 namespace Dsw2026Tpi.Api;
@@ -33,6 +38,24 @@ public class Program
             builder.Services.AddHealthChecks();
 
             var app = builder.Build();
+
+            using (var scope = app.Services.CreateScope())
+            {
+                var authDb = scope.ServiceProvider.GetRequiredService<AuthenticationDbContext>();
+                await authDb.Database.MigrateAsync();
+
+                var appDb = scope.ServiceProvider.GetRequiredService<Dsw2026TpiDbContext>();
+                await appDb.Database.MigrateAsync();
+
+                var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+                foreach (var roleName in new[] { Roles.Administrator, Roles.Patient })
+                {
+                    if (!await roleManager.RoleExistsAsync(roleName))
+                    {
+                        await roleManager.CreateAsync(new IdentityRole(roleName));
+                    }
+                }
+            }
 
             app.UseSerilogRequestLogging();
 

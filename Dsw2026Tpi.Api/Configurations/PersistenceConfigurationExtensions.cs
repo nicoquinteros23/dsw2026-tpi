@@ -23,9 +23,17 @@ public static class PersistenceConfigurationExtensions
         services.AddDbContext<AuthenticationDbContext>(options =>
         {
             options.UseSqlServer(connectionString);
+            
+            // Delegado síncrono de seeding
             options.UseSeeding((c, t) =>
             {
                 c.Seedwork<IdentityRole>("Sources\\roles.json");
+            });
+            
+            // Delegado asíncrono de seeding
+            options.UseAsyncSeeding(async (c, b, t) =>
+            {
+                await c.SeedworkAsync<IdentityRole>("Sources\\roles.json");
             });
         });
         return services;

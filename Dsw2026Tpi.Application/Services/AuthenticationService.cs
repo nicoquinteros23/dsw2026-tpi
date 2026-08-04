@@ -76,8 +76,14 @@ public class AuthenticationService : IAuthenticationService
         if (!result.Succeeded) throw new ConflictException(nameof(ErrorCodes.REGISTER_USER_CONFLICT),
             ErrorCodes.REGISTER_USER_CONFLICT)
                 .WithDetail(result.Errors.Select(e => (e.Code, e.Description)));
-       
-        _ = await _userManager.AddToRoleAsync(user, Roles.Administrator);
+
+        var roleResult = await _userManager.AddToRoleAsync(user, Roles.Administrator);
+        if (!roleResult.Succeeded)
+        {
+            throw new ConflictException(nameof(ErrorCodes.REGISTER_USER_CONFLICT),
+                ErrorCodes.REGISTER_USER_CONFLICT)
+                .WithDetail(roleResult.Errors.Select(e => (e.Code, e.Description)));
+        }
 
         _logger.LogInformation("Usuario registrado: {Email}", request.Email);
 
