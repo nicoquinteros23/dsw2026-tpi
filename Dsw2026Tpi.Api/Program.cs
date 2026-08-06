@@ -49,19 +49,80 @@ public class Program
             {
                 options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
+                var rateLimitSection = builder.Configuration.GetSection("RateLimiting");
+
+                var adminLimit = rateLimitSection.GetSection("AdminLogin").GetValue<int>("PermitLimit", 5);
+                var adminWindow = TimeSpan.FromSeconds(rateLimitSection.GetSection("AdminLogin").GetValue<int>("WindowInSeconds", 60));
+
+                var patientLimit = rateLimitSection.GetSection("PatientLogin").GetValue<int>("PermitLimit", 10);
+                var patientWindow = TimeSpan.FromSeconds(rateLimitSection.GetSection("PatientLogin").GetValue<int>("WindowInSeconds", 60));
+
+                var appointmentLimit = rateLimitSection.GetSection("AppointmentBooking").GetValue<int>("PermitLimit", 5);
+                var appointmentWindow = TimeSpan.FromSeconds(rateLimitSection.GetSection("AppointmentBooking").GetValue<int>("WindowInSeconds", 60));
+
+                var generalLimit = rateLimitSection.GetSection("General").GetValue<int>("PermitLimit", 100);
+                var generalWindow = TimeSpan.FromSeconds(rateLimitSection.GetSection("General").GetValue<int>("WindowInSeconds", 60));
+
                 options.AddFixedWindowLimiter("AdminLoginPolicy", policy =>
                 {
-                    policy.PermitLimit = 5;
-                    policy.Window = TimeSpan.FromMinutes(1);
+                    policy.PermitLimit = adminLimit;
+                    policy.Window = adminWindow;
                     policy.QueueLimit = 0;
                 });
 
                 options.AddFixedWindowLimiter("PatientLoginPolicy", policy =>
                 {
-                    policy.PermitLimit = 10;
-                    policy.Window = TimeSpan.FromMinutes(1);
+                    policy.PermitLimit = patientLimit;
+                    policy.Window = patientWindow;
                     policy.QueueLimit = 0;
                 });
+
+                options.AddPolicy("AppointmentBookingPolicy", httpContext =>
+                {
+                    var userKey = httpContext.User.Identity?.Name ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                    return RateLimitPartition.GetFixedWindowLimiter(userKey, _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = appointmentLimit,
+                        Window = appointmentWindow,
+                        QueueLimit = 0
+                    });
+                });
+
+                options.AddPolicy("GeneralPolicy", httpContext =>
+                {
+                    var userKey = httpContext.User.Identity?.Name ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                    return RateLimitPartition.GetFixedWindowLimiter(userKey, _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = generalLimit,
+                        Window = generalWindow,
+                        QueueLimit = 0
+                    });
+                });
+
+                options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+                {
+                    var userKey = httpContext.User.Identity?.Name ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+                    return RateLimitPartition.GetFixedWindowLimiter(userKey, _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = generalLimit,
+                        Window = generalWindow,
+                        QueueLimit = 0
+                    });
+                });
+
+                options.OnRejected = async (context, token) =>
+                {
+                    context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                    context.HttpContext.Response.ContentType = "application/json";
+                    
+                    var response = new
+                    {
+                        errorCode = "TOO_MANY_REQUESTS",
+                        message = "Se superó el límite de peticiones permitido. Por favor, intente más tarde."
+                    };
+
+                    await context.HttpContext.Response.WriteAsJsonAsync(response, cancellationToken: token);
+                };
             });
 
             builder.Services.AddScoped<ISpecialityService, SpecialityService>();

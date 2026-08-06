@@ -40,6 +40,14 @@ public class DoctorController : AppController
     {
         await _service.DeleteAsync(id);
         return NoContent();
+     }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(Guid id, [FromBody] DoctorRequest request)
+    {
+        await _service.UpdateAsync(id, request);
+        var response = await _service.GetByIdAsync(id);
+        return Ok(response);
     }
 
     [HttpGet("{id}/availabilities")]

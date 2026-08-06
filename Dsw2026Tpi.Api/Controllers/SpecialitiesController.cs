@@ -1,4 +1,4 @@
-﻿using Dsw2026Tpi.Application.Dtos.Specialities;
+using Dsw2026Tpi.Application.Dtos.Specialities;
 using Dsw2026Tpi.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,9 +19,9 @@ public class SpecialitiesController : ControllerBase
 
     [HttpGet]
     [AllowAnonymous] 
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] int pageSize = 10, [FromQuery] int pageIndex = 0, [FromQuery] string? name = null)
     {
-        var result = await _service.GetAllAsync();
+        var result = await _service.GetAllAsync(pageSize, pageIndex, name);
         return Ok(result);
     }
 
@@ -39,5 +39,14 @@ public class SpecialitiesController : ControllerBase
     {
         await _service.DeleteAsync(id);
         return NoContent();
+    }
+
+    [HttpPut("{id}")]
+    [Authorize(Roles = "ADMINISTRADOR")]
+    public async Task<IActionResult> Update(Guid id, [FromBody] SpecialityRequest request)
+    {
+        await _service.UpdateAsync(id, request);
+        var response = await _service.GetByIdAsync(id);
+        return Ok(response);
     }
 }

@@ -1,8 +1,9 @@
-﻿using Dsw2026Tpi.Application.Dtos.Appointments;
+using Dsw2026Tpi.Application.Dtos.Appointments;
 using Dsw2026Tpi.Application.Interfaces;
 using Dsw2026Tpi.CrossCutting.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Security.Claims;
 
 namespace Dsw2026Tpi.Api.Controllers;
@@ -25,6 +26,7 @@ public class AppointmentsController : ControllerBase
     /// </summary>
     [HttpPost]
     [Authorize(Roles = "Paciente")]
+    [EnableRateLimiting("AppointmentBookingPolicy")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -39,6 +41,19 @@ public class AppointmentsController : ControllerBase
         // El servicio se encargará de buscar el patientId usando el email
         var response = await _service.CreateAsync(request, userEmail);
         return CreatedAtAction(nameof(GetByPatient), new { dni = "" }, response);
+    }
+
+    /// <summary>
+    /// Turnos del día para el Administrador (GET /api/Appointments?date=YYYY-MM-DD)
+    /// </summary>
+    [HttpGet]
+    [Authorize(Roles = "ADMINISTRADOR")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetByDate([FromQuery] DateTime date)
+    {
+        var result = await _service.GetByDateAsync(date);
+        return Ok(result);
     }
 
     /// <summary>
