@@ -18,7 +18,7 @@ public class AuthenticationController : AppController
     }
 
     [HttpPost("admin/register")]
-    [Authorize(Policy = Policies.AdminPolicy)]
+   // [Authorize(Policy = Policies.AdminPolicy)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register([FromBody] RegisterModel.Request request)
