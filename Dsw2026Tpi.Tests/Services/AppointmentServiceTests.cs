@@ -42,7 +42,7 @@ public class AppointmentServiceTests
         context.Set<Speciality>().Add(speciality);
         await context.SaveChangesAsync();
 
-        var doctor = new Doctor("Dr. Test", speciality.Id);
+        var doctor = new Doctor("Dr. Test", "MP-22222", speciality.Id);
         context.Set<Doctor>().Add(doctor);
         await context.SaveChangesAsync();
 

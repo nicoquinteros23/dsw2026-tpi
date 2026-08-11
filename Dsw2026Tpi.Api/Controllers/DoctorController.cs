@@ -54,9 +54,9 @@ public class DoctorController : AppController
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetAvailabilities(Guid id, [FromQuery] int month, [FromQuery] int year)
+    public async Task<IActionResult> GetAvailabilities(Guid id)
     {
-        var availabilities = await _availabilityService.GetDoctorAvailabilityAsync(id, month, year);
+        var availabilities = await _availabilityService.GetDoctorAvailabilityAsync(id);
         return Ok(availabilities);
     }
 }

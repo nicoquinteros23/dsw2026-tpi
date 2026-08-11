@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Dsw2026Tpi.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/specialties")]
 [Authorize] // Protegido: requiere Token
 public class SpecialitiesController : ControllerBase
 {

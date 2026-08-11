@@ -44,6 +44,7 @@ public class DoctorServiceTests
         var request = new DoctorRequest
         {
             Name = "Dr. Juan Pérez",
+            LicenseNumber = "MP-12345",
             SpecialityId = speciality.Id
         };
 
@@ -52,12 +53,16 @@ public class DoctorServiceTests
         Assert.NotNull(response);
         Assert.NotEqual(Guid.Empty, response.Id);
         Assert.Equal(request.Name, response.Name);
+        Assert.Equal(request.LicenseNumber, response.LicenseNumber);
+        Assert.Equal(speciality.Id, response.Specialty.Id);
+        Assert.Equal(speciality.Name, response.Specialty.Name);
 
         var saved = await context.Set<Doctor>()
             .FirstOrDefaultAsync(d => d.Id == response.Id);
         Assert.NotNull(saved);
         Assert.False(saved.IsDeleted);
         Assert.Equal(speciality.Id, saved.SpecialityId);
+        Assert.Equal(request.LicenseNumber, saved.LicenseNumber);
     }
 
     // ──────────────────────────────────────────
@@ -76,6 +81,7 @@ public class DoctorServiceTests
         var request = new DoctorRequest
         {
             Name = invalidName,
+            LicenseNumber = "MP-12345",
             SpecialityId = speciality.Id
         };
 
@@ -95,6 +101,7 @@ public class DoctorServiceTests
         var request = new DoctorRequest
         {
             Name = "Dr. Ana García",
+            LicenseNumber = "MP-54321",
             SpecialityId = Guid.NewGuid()
         };
 
@@ -111,7 +118,7 @@ public class DoctorServiceTests
     {
         using var context = CreateInMemoryContext();
         var speciality = await SeedSpecialityAsync(context);
-        var doctor = new Doctor("Dr. Carlos López", speciality.Id);
+        var doctor = new Doctor("Dr. Carlos López", "MP-99999", speciality.Id);
         context.Set<Doctor>().Add(doctor);
         await context.SaveChangesAsync();
 

@@ -33,7 +33,8 @@ public class DoctorService : IDoctorService
             {
                 Id = d.Id,
                 Name = d.Name,
-                SpecialityName = d.Speciality.Name
+                LicenseNumber = d.LicenseNumber,
+                Specialty = new DoctorSpecialityResponse { Id = d.Speciality.Id, Name = d.Speciality.Name }
             }).ToListAsync();
 
         return new Pagination<DoctorResponse>(pageSize, pageIndex, totalItems, items);
@@ -47,7 +48,13 @@ public class DoctorService : IDoctorService
 
         if (d == null) throw new EntityNotFoundException("Doctor");
 
-        return new DoctorResponse { Id = d.Id, Name = d.Name, SpecialityName = d.Speciality.Name };
+        return new DoctorResponse
+        {
+            Id = d.Id,
+            Name = d.Name,
+            LicenseNumber = d.LicenseNumber,
+            Specialty = new DoctorSpecialityResponse { Id = d.Speciality.Id, Name = d.Speciality.Name }
+        };
     }
 
     public async Task<DoctorResponse> CreateAsync(DoctorRequest request)
@@ -55,17 +62,23 @@ public class DoctorService : IDoctorService
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length < 3 || request.Name.Length > 100)
             throw new ValidationException("Nombre inválido (3-100 caracteres).", "VALIDATION_ERROR");
 
-        var specialityExists = await _context.Set<Speciality>()
-            .AnyAsync(s => s.Id == request.SpecialityId && !s.IsDeleted);
+        var speciality = await _context.Set<Speciality>()
+            .FirstOrDefaultAsync(s => s.Id == request.SpecialityId && !s.IsDeleted);
 
-        if (!specialityExists)
+        if (speciality == null)
             throw new BusinessRuleException("La especialidad asociada no existe.", "SPECIALITY_NOT_FOUND");
 
-        var doctor = new Doctor(request.Name, request.SpecialityId);
+        var doctor = new Doctor(request.Name, request.LicenseNumber, request.SpecialityId);
         _context.Set<Doctor>().Add(doctor);
         await _context.SaveChangesAsync();
 
-        return new DoctorResponse { Id = doctor.Id, Name = doctor.Name };
+        return new DoctorResponse
+        {
+            Id = doctor.Id,
+            Name = doctor.Name,
+            LicenseNumber = doctor.LicenseNumber,
+            Specialty = new DoctorSpecialityResponse { Id = speciality.Id, Name = speciality.Name }
+        };
     }
 
     public async Task UpdateAsync(Guid id, DoctorRequest request)
@@ -78,6 +91,7 @@ public class DoctorService : IDoctorService
         if (!specialityExists) throw new BusinessRuleException("La especialidad no existe.", "SPECIALITY_NOT_FOUND");
 
         doctor.Name = request.Name;
+        doctor.LicenseNumber = request.LicenseNumber;
         doctor.SpecialityId = request.SpecialityId;
 
         await _context.SaveChangesAsync();

@@ -18,10 +18,10 @@ public class AvailabilitiesController : AppController
     }
 
     /// <summary>
-    /// Crea disponibilidades para un médico en un mes específico.
+    /// Crea disponibilidades para un médico para el resto del mes en curso.
     /// Genera automáticamente slots de 30 minutos basados en los días y horarios proporcionados.
     /// </summary>
-    /// <param name="request">Contiene doctorId, año, mes y array de días con horarios</param>
+    /// <param name="request">Contiene doctorId y array de días (en español) con horarios</param>
     /// <returns>Lista de reglas de disponibilidad creadas</returns>
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -37,10 +37,10 @@ public class AvailabilitiesController : AppController
     }
 
     /// <summary>
-    /// Actualiza las disponibilidades futuras de un médico.
+    /// Actualiza las disponibilidades del mes en curso de un médico.
     /// Elimina los slots no reservados y reemplaza las reglas.
     /// </summary>
-    /// <param name="request">Contiene doctorId, año, mes y array de días con horarios</param>
+    /// <param name="request">Contiene doctorId y array de días (en español) con horarios</param>
     /// <returns>Lista de reglas de disponibilidad actualizadas</returns>
     [HttpPut]
     [ProducesResponseType(StatusCodes.Status200OK)]
