@@ -42,6 +42,7 @@ public class ExceptionHandlingMiddleware
             AuthenticationException => HttpStatusCode.Unauthorized,
             ConflictException => HttpStatusCode.Conflict,
             AuthorizationException => HttpStatusCode.Unauthorized,
+            BusinessRuleException => HttpStatusCode.BadRequest,
             _ => HttpStatusCode.InternalServerError,
         };
         var options = new JsonSerializerOptions
