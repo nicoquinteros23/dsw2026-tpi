@@ -24,9 +24,9 @@ public class AppointmentServiceTests
     }
 
     /// <summary>
-    /// Siembra Patient, Speciality y Doctor en el contexto y retorna sus IDs.
+    /// Siembra Patient, Speciality y Doctor en el contexto y retorna sus IDs (y dni del paciente).
     /// </summary>
-    private static async Task<(Guid patientId, Guid doctorId, Guid slotId)> SeedBaseDataAsync(
+    private static async Task<(Guid patientId, string patientDni, Guid doctorId, Guid slotId)> SeedBaseDataAsync(
         TestDbContext context)
     {
         var patient = new Patient
@@ -55,7 +55,7 @@ public class AppointmentServiceTests
         context.Set<AvailabilitySlot>().Add(slot);
         await context.SaveChangesAsync();
 
-        return (patient.Id, doctor.Id, slotId);
+        return (patient.Id, patient.Dni, doctor.Id, slotId);
     }
 
     // ──────────────────────────────────────────
@@ -66,25 +66,28 @@ public class AppointmentServiceTests
     public async Task CreateAsync_WithValidRequest_CreatesAppointmentSuccessfully()
     {
         using var context = CreateInMemoryContext();
-        var (patientId, doctorId, slotId) = await SeedBaseDataAsync(context);
+        var (patientId, patientDni, doctorId, slotId) = await SeedBaseDataAsync(context);
         var service = new AppointmentService(context);
 
-        var futureDate = DateTime.Now.AddDays(7);
         var request = new AppointmentRequest
         {
-            PatientId = patientId,
             DoctorId = doctorId,
-            AvailabilitySlotId = slotId,
-            Date = futureDate,
+            AvailabilityId = slotId,
+            Patient = new AppointmentPatientRequest { Dni = patientDni },
             Reason = "Consulta médica de rutina anual"
         };
 
-        var response = await service.CreateAsync(request, "paciente@test.com");
+        var response = await service.CreateAsync(request);
+
+        // La fecha del turno sale siempre del AvailabilitySlot (SlotDate + StartTime),
+        // ya no se manda "date" en el request.
+        var expectedDate = DateTime.Now.AddDays(7).Date.Add(TimeSpan.FromHours(9));
 
         Assert.NotNull(response);
         Assert.NotEqual(Guid.Empty, response.Id);
         Assert.Equal("BOOKED", response.Status);
-        Assert.Equal(futureDate, response.Date);
+        Assert.Equal(expectedDate, response.Date);
+        Assert.Equal(patientDni, response.PatientDni);
 
         var saved = await context.Set<Appointment>()
             .FirstOrDefaultAsync(a => a.Id == response.Id);
@@ -94,27 +97,27 @@ public class AppointmentServiceTests
     }
 
     // ──────────────────────────────────────────
-    // PRUEBA 2: Fecha pasada
+    // PRUEBA 2: Paciente inexistente (dni no registrado)
     // ──────────────────────────────────────────
 
     [Fact]
-    public async Task CreateAsync_WithPastDate_ThrowsException()
+    public async Task CreateAsync_WithUnknownPatientDni_ThrowsException()
     {
+        // La consigna identifica al paciente por "patient.dni" en vez de patientId:
+        // si ese dni no corresponde a ningún paciente ya registrado, es un error.
         using var context = CreateInMemoryContext();
-        var (patientId, doctorId, slotId) = await SeedBaseDataAsync(context);
+        var (_, _, doctorId, slotId) = await SeedBaseDataAsync(context);
         var service = new AppointmentService(context);
 
         var request = new AppointmentRequest
         {
-            PatientId = patientId,
             DoctorId = doctorId,
-            AvailabilitySlotId = slotId,
-            Date = DateTime.Now.AddDays(-1),
+            AvailabilityId = slotId,
+            Patient = new AppointmentPatientRequest { Dni = "99999999" },
             Reason = "Consulta médica de rutina"
         };
 
-        var exception = await Assert.ThrowsAsync<ValidationException>(() => service.CreateAsync(request, "paciente@test.com"));
-        Assert.Contains("pasados", exception.Message, StringComparison.OrdinalIgnoreCase);
+        await Assert.ThrowsAsync<EntityNotFoundException>(() => service.CreateAsync(request));
     }
 
     // ──────────────────────────────────────────
@@ -127,19 +130,18 @@ public class AppointmentServiceTests
     public async Task CreateAsync_WithShortReason_ThrowsException(string shortReason)
     {
         using var context = CreateInMemoryContext();
-        var (patientId, doctorId, slotId) = await SeedBaseDataAsync(context);
+        var (_, patientDni, doctorId, slotId) = await SeedBaseDataAsync(context);
         var service = new AppointmentService(context);
 
         var request = new AppointmentRequest
         {
-            PatientId = patientId,
             DoctorId = doctorId,
-            AvailabilitySlotId = slotId,
-            Date = DateTime.Now.AddDays(3),
+            AvailabilityId = slotId,
+            Patient = new AppointmentPatientRequest { Dni = patientDni },
             Reason = shortReason
         };
 
-        var exception = await Assert.ThrowsAsync<ValidationException>(() => service.CreateAsync(request, "paciente@test.com"));
+        var exception = await Assert.ThrowsAsync<ValidationException>(() => service.CreateAsync(request));
         Assert.Contains("motivo", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -151,7 +153,7 @@ public class AppointmentServiceTests
     public async Task CreateAsync_WithAlreadyBookedSlot_ThrowsConflictException()
     {
         using var context = CreateInMemoryContext();
-        var (patientId, doctorId, slotId) = await SeedBaseDataAsync(context);
+        var (patientId, patientDni, doctorId, slotId) = await SeedBaseDataAsync(context);
 
         // Reserva previa con el mismo slot
         var existing = new Appointment(patientId, doctorId, slotId,
@@ -163,14 +165,13 @@ public class AppointmentServiceTests
 
         var request = new AppointmentRequest
         {
-            PatientId = patientId,
             DoctorId = doctorId,
-            AvailabilitySlotId = slotId,
-            Date = DateTime.Now.AddDays(5),
+            AvailabilityId = slotId,
+            Patient = new AppointmentPatientRequest { Dni = patientDni },
             Reason = "Intento de doble reserva del mismo slot"
         };
 
-        var exception = await Assert.ThrowsAsync<ConflictException>(() => service.CreateAsync(request, "paciente@test.com"));
+        var exception = await Assert.ThrowsAsync<ConflictException>(() => service.CreateAsync(request));
         Assert.Contains("Conflicto", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -182,7 +183,7 @@ public class AppointmentServiceTests
     public async Task CancelAsync_BookedAppointment_ChangesStatusToCancelled()
     {
         using var context = CreateInMemoryContext();
-        var (patientId, doctorId, slotId) = await SeedBaseDataAsync(context);
+        var (patientId, _, doctorId, slotId) = await SeedBaseDataAsync(context);
 
         var appointment = new Appointment(patientId, doctorId, slotId,
             DateTime.Now.AddDays(3), "Consulta médica a cancelar");
@@ -205,7 +206,7 @@ public class AppointmentServiceTests
     public async Task CancelAsync_AlreadyCancelledAppointment_ThrowsException()
     {
         using var context = CreateInMemoryContext();
-        var (patientId, doctorId, slotId) = await SeedBaseDataAsync(context);
+        var (patientId, _, doctorId, slotId) = await SeedBaseDataAsync(context);
 
         var appointment = new Appointment(patientId, doctorId, slotId,
             DateTime.Now.AddDays(3), "Consulta ya cancelada");
@@ -227,7 +228,7 @@ public class AppointmentServiceTests
     public async Task CreateAndCancel_UpdatesAvailabilitySlotStatusCorrectly()
     {
         using var context = CreateInMemoryContext();
-        var (patientId, doctorId, slotId) = await SeedBaseDataAsync(context);
+        var (_, patientDni, doctorId, slotId) = await SeedBaseDataAsync(context);
         var service = new AppointmentService(context);
 
         // Validar que inicia en AVAILABLE
@@ -235,18 +236,16 @@ public class AppointmentServiceTests
         Assert.NotNull(slotBefore);
         Assert.Equal("AVAILABLE", slotBefore.Status);
 
-        var futureDate = DateTime.Now.AddDays(7);
         var request = new AppointmentRequest
         {
-            PatientId = patientId,
             DoctorId = doctorId,
-            AvailabilitySlotId = slotId,
-            Date = futureDate,
+            AvailabilityId = slotId,
+            Patient = new AppointmentPatientRequest { Dni = patientDni },
             Reason = "Consulta de control anual médica"
         };
 
         // Crear reserva
-        var response = await service.CreateAsync(request, "paciente@test.com");
+        var response = await service.CreateAsync(request);
         Assert.NotNull(response);
 
         // El slot debe cambiar a BOOKED
@@ -271,9 +270,12 @@ public class AppointmentServiceTests
     public async Task CreateAsync_WithPastSlot_ThrowsBusinessRuleException()
     {
         using var context = CreateInMemoryContext();
-        var (patientId, doctorId, slotId) = await SeedBaseDataAsync(context);
-        
-        // Modificar el slot sembrado para que esté en el pasado
+        var (_, patientDni, doctorId, slotId) = await SeedBaseDataAsync(context);
+
+        // Modificar el slot sembrado para que esté en el pasado.
+        // La consigna elimina "date" del request: la fecha del turno sale siempre
+        // del AvailabilitySlot referenciado, así que un slot vencido es la única
+        // forma de probar el rechazo de fechas pasadas.
         var slot = await context.Set<AvailabilitySlot>().FindAsync(slotId);
         Assert.NotNull(slot);
         slot.SlotDate = DateTime.Now.AddDays(-5);
@@ -284,14 +286,13 @@ public class AppointmentServiceTests
 
         var request = new AppointmentRequest
         {
-            PatientId = patientId,
             DoctorId = doctorId,
-            AvailabilitySlotId = slotId,
-            Date = DateTime.Now.AddDays(7), // Request date is in future, but slot date is in past!
+            AvailabilityId = slotId,
+            Patient = new AppointmentPatientRequest { Dni = patientDni },
             Reason = "Consulta médica de rutina"
         };
 
-        var exception = await Assert.ThrowsAsync<BusinessRuleException>(() => service.CreateAsync(request, "paciente@test.com"));
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(() => service.CreateAsync(request));
         Assert.Equal("APPOINTMENT_PAST_DATE", exception.Error.ErrorCode);
     }
 
@@ -303,7 +304,7 @@ public class AppointmentServiceTests
     public async Task GetByDateAsync_ReturnsOnlyAppointmentsOnSpecificDate()
     {
         using var context = CreateInMemoryContext();
-        var (patientId, doctorId, slotId) = await SeedBaseDataAsync(context);
+        var (patientId, _, doctorId, slotId) = await SeedBaseDataAsync(context);
         var targetDate = DateTime.Now.AddDays(7);
 
         // Turno del día objetivo
@@ -322,5 +323,31 @@ public class AppointmentServiceTests
         Assert.NotNull(result);
         Assert.Single(result);
         Assert.Equal(doctorId, appointment1.DoctorId);
+    }
+
+    // ──────────────────────────────────────────
+    // PRUEBA 10: SearchAsync – filtra por specialtyId y completa PatientDni/SpecialityName
+    // ──────────────────────────────────────────
+
+    [Fact]
+    public async Task SearchAsync_FiltersBySpecialtyId_AndPopulatesPatientAndSpecialityInfo()
+    {
+        using var context = CreateInMemoryContext();
+        var (patientId, patientDni, doctorId, slotId) = await SeedBaseDataAsync(context);
+
+        var appointment = new Appointment(patientId, doctorId, slotId, DateTime.Now.AddDays(7), "Control de rutina anual");
+        context.Set<Appointment>().Add(appointment);
+        await context.SaveChangesAsync();
+
+        var doctorEntity = await context.Set<Doctor>().FindAsync(doctorId);
+        Assert.NotNull(doctorEntity);
+
+        var service = new AppointmentService(context);
+        var result = await service.SearchAsync(doctorEntity.SpecialityId, null, null, null, 0, 10);
+
+        Assert.Equal(1, result.Total);
+        var item = Assert.Single(result.Data);
+        Assert.Equal(patientDni, item.PatientDni);
+        Assert.Equal("Clínica Médica", item.SpecialityName);
     }
 }

@@ -4,7 +4,6 @@ using Dsw2026Tpi.CrossCutting.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using System.Security.Claims;
 
 namespace Dsw2026Tpi.Api.Controllers;
 
@@ -22,7 +21,8 @@ public class AppointmentsController : ControllerBase
 
     /// <summary>
     /// Reservar un turno (POST /api/Appointments)
-    /// El patientId se extrae automáticamente del token JWT del usuario autenticado.
+    /// Requiere un paciente autenticado; el paciente del turno se identifica por
+    /// el DNI enviado en el body (patient.dni), fuente de verdad según la consigna.
     /// </summary>
     [HttpPost]
     [Authorize(Roles = "Paciente")]
@@ -32,14 +32,7 @@ public class AppointmentsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Create([FromBody] AppointmentRequest request)
     {
-        // Extraer el email del usuario autenticado desde el token JWT
-        var userEmail = User.FindFirst(ClaimTypes.Name)?.Value;
-        
-        if (string.IsNullOrEmpty(userEmail))
-            return Unauthorized(new { message = "No se pudo extraer la identidad del usuario del token." });
-
-        // El servicio se encargará de buscar el patientId usando el email
-        var response = await _service.CreateAsync(request, userEmail);
+        var response = await _service.CreateAsync(request);
         return CreatedAtAction(nameof(GetByPatient), new { dni = "" }, response);
     }
 
@@ -87,14 +80,14 @@ public class AppointmentsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Search(
-        [FromQuery] Guid? specialityId,
+        [FromQuery] Guid? specialtyId,
         [FromQuery] Guid? doctorId,
         [FromQuery] string? dni,
         [FromQuery] DateTime? date,
         [FromQuery] int pageIndex = 0,
         [FromQuery] int pageSize = 10)
     {
-        var result = await _service.SearchAsync(specialityId, doctorId, dni, date, pageIndex, pageSize);
+        var result = await _service.SearchAsync(specialtyId, doctorId, dni, date, pageIndex, pageSize);
         return Ok(result);
     }
 }
