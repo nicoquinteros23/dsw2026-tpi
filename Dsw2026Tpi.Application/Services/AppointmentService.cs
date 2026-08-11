@@ -1,5 +1,6 @@
 using Dsw2026Tpi.Application.Dtos.Appointments;
 using Dsw2026Tpi.Application.Interfaces;
+using Dsw2026Tpi.CrossCutting.Exceptions;
 using Dsw2026Tpi.Domain;
 using Dsw2026Tpi.Domain.Entities;
 using Dsw2026Tpi.Data;
@@ -16,26 +17,48 @@ public class AppointmentService : IAppointmentService
         _context = context;
     }
 
-    public async Task<AppointmentResponse> CreateAsync(AppointmentRequest request)
+    public async Task<AppointmentResponse> CreateAsync(AppointmentRequest request, string userEmail)
     {
-        // 1. Validar que no sea una fecha pasada
+        // 1. Buscar al paciente por su email (viene del token JWT)
+        var patient = await _context.Patients
+            .FirstOrDefaultAsync(p => p.Email == userEmail && !p.Deleted);
+
+        if (patient == null)
+            throw new EntityNotFoundException("Patient");
+
+        var availabilitySlot = await _context.Set<AvailabilitySlot>().FindAsync(request.AvailabilitySlotId);
+        if (availabilitySlot == null || availabilitySlot.Deleted)
+            throw new EntityNotFoundException("AvailabilitySlot");
+
+        var slotDateTime = availabilitySlot.SlotDate.Date.Add(availabilitySlot.StartTime);
+        if (slotDateTime < DateTime.Now)
+            throw new BusinessRuleException("No se pueden reservar turnos en fechas u horarios pasados.", "APPOINTMENT_PAST_DATE");
+
+        // Si se omite la fecha en el request, se asigna automáticamente la fecha del slot.
+        if (request.Date == default)
+        {
+            request.Date = slotDateTime;
+        }
+
+        // 2. Validar que no sea una fecha pasada
         if (request.Date < DateTime.Now)
-            throw new Exception("No se pueden reservar turnos en fechas u horarios pasados.");
+            throw new ValidationException("No se pueden reservar turnos en fechas u horarios pasados.", "VALIDATION_ERROR");
 
-        // 2. Validar motivo (mínimo 5 caracteres según el PDF)
+        // 3. Validar motivo (mínimo 5 caracteres según el PDF)
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length < 5)
-            throw new Exception("El motivo del turno es obligatorio y debe tener al menos 5 caracteres.");
+            throw new ValidationException("El motivo del turno es obligatorio y debe tener al menos 5 caracteres.", "VALIDATION_ERROR");
 
-        // 3. CONTROL DE CONCURRENCIA (Doble reserva)
-        // Verificamos si ese bloque de horario (AvailabilitySlotId) ya tiene un turno RESERVADO (BOOKED)
+        // 4. CONTROL DE CONCURRENCIA (Doble reserva)
         var isOccupied = await _context.Set<Appointment>()
             .AnyAsync(a => a.AvailabilitySlotId == request.AvailabilitySlotId && a.Status == AppointmentStatus.BOOKED);
 
         if (isOccupied)
-            throw new Exception("Conflicto: Este turno ya ha sido reservado por otro paciente. Por favor, elija otro horario.");
+            throw new ConflictException("APPOINTMENT_CONFLICT", "Conflicto: Este turno ya ha sido reservado por otro paciente. Por favor, elija otro horario.");
 
-        // 4. Crear el turno
-        var appointment = new Appointment(request.PatientId, request.DoctorId, request.AvailabilitySlotId, request.Date, request.Reason);
+        availabilitySlot.Status = "BOOKED";
+
+        // 5. Crear el turno usando el patientId obtenido del email
+        var appointment = new Appointment(patient.Id, request.DoctorId, request.AvailabilitySlotId, request.Date, request.Reason);
 
         _context.Set<Appointment>().Add(appointment);
         await _context.SaveChangesAsync();
@@ -52,13 +75,20 @@ public class AppointmentService : IAppointmentService
     {
         var appointment = await _context.Set<Appointment>().FindAsync(id);
 
-        if (appointment == null) throw new Exception("Turno no encontrado.");
+        if (appointment == null) throw new EntityNotFoundException("Appointment");
 
         // REGLA DEL PDF: Solo se puede cancelar si está BOOKED
         if (appointment.Status != AppointmentStatus.BOOKED)
-            throw new Exception("Solo se pueden cancelar turnos que estén en estado RESERVADO (BOOKED).");
+            throw new BusinessRuleException("Solo se pueden cancelar turnos que estén en estado RESERVADO (BOOKED).", "INVALID_APPOINTMENT_STATUS");
 
         appointment.Cancel(); // Cambia el estado a CANCELLED
+
+        var slot = await _context.Set<AvailabilitySlot>().FindAsync(appointment.AvailabilitySlotId);
+        if (slot != null)
+        {
+            slot.Status = "AVAILABLE";
+        }
+
         await _context.SaveChangesAsync();
     }
 
@@ -114,6 +144,21 @@ public class AppointmentService : IAppointmentService
             })
             .ToListAsync();
 
-        return new Pagination<AppointmentResponse>(total, pageIndex, pageSize, items);
+        return new Pagination<AppointmentResponse>(pageSize, pageIndex, total, items);
+    }
+
+    public async Task<IEnumerable<AppointmentResponse>> GetByDateAsync(DateTime date)
+    {
+        return await _context.Set<Appointment>()
+            .Include(a => a.Doctor)
+            .Where(a => a.Date.Date == date.Date)
+            .Select(a => new AppointmentResponse
+            {
+                Id = a.Id,
+                Date = a.Date,
+                DoctorName = a.Doctor.Name,
+                Status = a.Status.ToString()
+            })
+            .ToListAsync();
     }
 }

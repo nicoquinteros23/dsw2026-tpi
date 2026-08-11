@@ -1,5 +1,6 @@
-﻿using Dsw2026Tpi.Application.Dtos.Specialities;
+using Dsw2026Tpi.Application.Dtos.Specialities;
 using Dsw2026Tpi.Application.Interfaces;
+using Dsw2026Tpi.CrossCutting.Exceptions;
 using Dsw2026Tpi.Domain.Entities;
 using Dsw2026Tpi.Data;
 using Microsoft.EntityFrameworkCore;
@@ -15,17 +16,27 @@ public class SpecialityService : ISpecialityService
         _context = context;
     }
 
-    public async Task<IEnumerable<SpecialityResponse>> GetAllAsync()
+    public async Task<Pagination<SpecialityResponse>> GetAllAsync(int pageSize, int pageIndex, string? name = null)
     {
         // REGLA DEL PDF: No listar las que tengan baja lógica (IsDeleted)
-        return await _context.Set<Speciality>()
-            .Where(s => !s.IsDeleted)
+        var query = _context.Set<Speciality>()
+            .Where(s => !s.IsDeleted);
+
+        if (!string.IsNullOrEmpty(name))
+            query = query.Where(s => s.Name.Contains(name));
+
+        var totalItems = await query.CountAsync();
+        var items = await query
+            .Skip(pageIndex * pageSize)
+            .Take(pageSize)
             .Select(s => new SpecialityResponse
             {
                 Id = s.Id,
                 Name = s.Name,
                 Description = s.Description
             }).ToListAsync();
+
+        return new Pagination<SpecialityResponse>(pageSize, pageIndex, totalItems, items);
     }
 
     public async Task<SpecialityResponse> GetByIdAsync(Guid id)
@@ -33,7 +44,7 @@ public class SpecialityService : ISpecialityService
         var speciality = await _context.Set<Speciality>()
             .FirstOrDefaultAsync(s => s.Id == id && !s.IsDeleted);
 
-        if (speciality == null) throw new Exception("La especialidad no existe.");
+        if (speciality == null) throw new EntityNotFoundException("Speciality");
 
         return new SpecialityResponse
         {
@@ -66,7 +77,7 @@ public class SpecialityService : ISpecialityService
         var speciality = await _context.Set<Speciality>().FindAsync(id);
 
         if (speciality == null || speciality.IsDeleted)
-            throw new Exception("La especialidad no existe.");
+            throw new EntityNotFoundException("Speciality");
 
         ValidateRequest(request);
 
@@ -82,7 +93,7 @@ public class SpecialityService : ISpecialityService
     {
         var speciality = await _context.Set<Speciality>().FindAsync(id);
 
-        if (speciality == null) throw new Exception("La especialidad no existe.");
+        if (speciality == null) throw new EntityNotFoundException("Speciality");
 
         // REGLA DEL PDF: Baja lógica, nunca borrar de verdad
         speciality.IsDeleted = true;
@@ -93,9 +104,9 @@ public class SpecialityService : ISpecialityService
     private void ValidateRequest(SpecialityRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length < 3 || request.Name.Length > 100)
-            throw new Exception("Nombre obligatorio, entre 3 y 100 caracteres.");
+            throw new ValidationException("Nombre obligatorio, entre 3 y 100 caracteres.", "VALIDATION_ERROR");
 
         if (string.IsNullOrWhiteSpace(request.Description) || request.Description.Length < 10 || request.Description.Length > 100)
-            throw new Exception("Descripción obligatoria, entre 10 y 100 caracteres.");
+            throw new ValidationException("Descripción obligatoria, entre 10 y 100 caracteres.", "VALIDATION_ERROR");
     }
 }

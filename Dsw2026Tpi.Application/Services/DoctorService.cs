@@ -1,5 +1,6 @@
-﻿using Dsw2026Tpi.Application.Dtos.Doctors;
+using Dsw2026Tpi.Application.Dtos.Doctors;
 using Dsw2026Tpi.Application.Interfaces;
+using Dsw2026Tpi.CrossCutting.Exceptions;
 using Dsw2026Tpi.Domain.Entities;
 using Dsw2026Tpi.Data;
 using Microsoft.EntityFrameworkCore;
@@ -35,7 +36,7 @@ public class DoctorService : IDoctorService
                 SpecialityName = d.Speciality.Name
             }).ToListAsync();
 
-        return new Pagination<DoctorResponse>(totalItems, pageIndex, pageSize, items);
+        return new Pagination<DoctorResponse>(pageSize, pageIndex, totalItems, items);
     }
 
     public async Task<DoctorResponse> GetByIdAsync(Guid id)
@@ -44,7 +45,7 @@ public class DoctorService : IDoctorService
             .Include(x => x.Speciality)
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
 
-        if (d == null) throw new Exception("Médico no encontrado.");
+        if (d == null) throw new EntityNotFoundException("Doctor");
 
         return new DoctorResponse { Id = d.Id, Name = d.Name, SpecialityName = d.Speciality.Name };
     }
@@ -52,13 +53,13 @@ public class DoctorService : IDoctorService
     public async Task<DoctorResponse> CreateAsync(DoctorRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length < 3 || request.Name.Length > 100)
-            throw new Exception("Nombre inválido (3-100 caracteres).");
+            throw new ValidationException("Nombre inválido (3-100 caracteres).", "VALIDATION_ERROR");
 
         var specialityExists = await _context.Set<Speciality>()
             .AnyAsync(s => s.Id == request.SpecialityId && !s.IsDeleted);
 
         if (!specialityExists)
-            throw new Exception("La especialidad asociada no existe.");
+            throw new BusinessRuleException("La especialidad asociada no existe.", "SPECIALITY_NOT_FOUND");
 
         var doctor = new Doctor(request.Name, request.SpecialityId);
         _context.Set<Doctor>().Add(doctor);
@@ -70,11 +71,11 @@ public class DoctorService : IDoctorService
     public async Task UpdateAsync(Guid id, DoctorRequest request)
     {
         var doctor = await _context.Set<Doctor>().FindAsync(id);
-        if (doctor == null || doctor.IsDeleted) throw new Exception("Médico no encontrado.");
+        if (doctor == null || doctor.IsDeleted) throw new EntityNotFoundException("Doctor");
 
         var specialityExists = await _context.Set<Speciality>()
             .AnyAsync(s => s.Id == request.SpecialityId && !s.IsDeleted);
-        if (!specialityExists) throw new Exception("La especialidad no existe.");
+        if (!specialityExists) throw new BusinessRuleException("La especialidad no existe.", "SPECIALITY_NOT_FOUND");
 
         doctor.Name = request.Name;
         doctor.SpecialityId = request.SpecialityId;
@@ -85,7 +86,7 @@ public class DoctorService : IDoctorService
     public async Task DeleteAsync(Guid id)
     {
         var doctor = await _context.Set<Doctor>().FindAsync(id);
-        if (doctor == null || doctor.IsDeleted) throw new Exception("Médico no encontrado.");
+        if (doctor == null || doctor.IsDeleted) throw new EntityNotFoundException("Doctor");
 
         doctor.IsDeleted = true;
         await _context.SaveChangesAsync();
